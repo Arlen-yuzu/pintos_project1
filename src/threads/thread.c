@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "devices/timer.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -23,6 +24,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* List of processes in sleeping state. */
+static struct list sleeping_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -71,6 +75,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool less_sleeping_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -92,6 +98,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleeping_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -117,6 +124,74 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+/* Put current thread to sleep */
+void
+thread_sleep (int64_t ticks) //TODO
+{
+  enum intr_level old_level; 
+  struct thread *cur = thread_current ();
+
+  /* Check whether parameter ticks is larger than 0 */
+  if (ticks <= 0)
+    return;
+
+  /* Set sleeping_ticks to the ticks when the thread will wake up */
+  cur->sleeping_ticks = ticks + timer_ticks ();
+
+  /* Disable interrupts */
+  old_level = intr_disable ();
+
+  /* Insert the thread into sleeping list, keep the list in ascending order */
+  list_insert_ordered (&sleeping_list, &cur->elem, less_sleeping_ticks, NULL);
+  
+  /* Block the thread*/
+  thread_block ();
+
+  /* Enable interrupts */
+  intr_set_level (old_level);
+}
+
+/* check sleeping_list from its head to see if any threads 
+   can be unblocked and removed from the list */
+void 
+sleeping_list_handle(void) //TODO
+{
+  struct list_elem *elem_cur;
+  struct list_elem *elem_next;
+  struct thread *t;
+  enum intr_level old_level; 
+
+  if (list_empty (&sleeping_list))
+    return;
+
+  elem_cur = list_begin (&sleeping_list);
+  while (elem_cur != list_end (&sleeping_list)) 
+  {
+    t = list_entry (elem_cur, struct thread, elem);
+    elem_next = list_next (elem_cur);
+    if (t->sleeping_ticks > timer_ticks ())
+      break;
+    t->sleeping_ticks = 0;
+    old_level = intr_disable ();
+    list_remove (elem_cur); 
+    thread_unblock(t);
+    intr_set_level (old_level);
+    elem_cur = elem_next;
+  }
+}
+
+static bool less_sleeping_ticks(const struct list_elem *a,
+                             const struct list_elem *b,
+                             void *aux UNUSED)
+{
+  ASSERT (a != NULL);
+  ASSERT (b != NULL);
+  const struct thread *a_entry = list_entry (a, struct thread, elem);
+  const struct thread *b_entry = list_entry (b, struct thread, elem);
+
+  return a_entry->sleeping_ticks < b_entry->sleeping_ticks;
+}
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -137,6 +212,7 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+  sleeping_list_handle ();
 }
 
 /* Prints thread statistics. */
