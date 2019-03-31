@@ -24,7 +24,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+#define LOCK_LEVEL 8                    /* lock depth */
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -91,7 +91,9 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t sleeping_ticks;             /* Time when thread can wake up. */
-
+    int base_priority;                  /* Store the original priority before donation */
+    struct list donators;               /* a list of threads waiting on the locks this thread has */
+    struct lock *lock_blocked_by;       /* the thread blocked by the lock */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -142,4 +144,5 @@ int thread_get_load_avg (void);
 
 void thread_sleep (int64_t ticks);
 void sleeping_list_handle (void);
+void thread_update_priority (struct thread *t, int new_priority);
 #endif /* threads/thread.h */

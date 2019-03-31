@@ -75,7 +75,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool less_sleeping_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+static bool less_sleeping_ticks (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+static bool higher_priority (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -180,6 +181,7 @@ sleeping_list_handle(void) //TODO
   }
 }
 
+/* Compare two elements in the list based on sleeping ticks */
 static bool less_sleeping_ticks(const struct list_elem *a,
                              const struct list_elem *b,
                              void *aux UNUSED)
@@ -190,6 +192,36 @@ static bool less_sleeping_ticks(const struct list_elem *a,
   const struct thread *b_entry = list_entry (b, struct thread, elem);
 
   return a_entry->sleeping_ticks < b_entry->sleeping_ticks;
+}
+
+/* Compare two elements in the list based on priority */
+static bool higher_priority(const struct list_elem *a,
+                             const struct list_elem *b,
+                             void *aux UNUSED)
+{
+  ASSERT (a != NULL);
+  ASSERT (b != NULL);
+  const struct thread *a_entry = list_entry (a, struct thread, elem);
+  const struct thread *b_entry = list_entry (b, struct thread, elem);
+
+  return a_entry->priority > b_entry->priority;
+}
+
+void
+thread_update_priority (struct thread *t, int new_priority) //TODO
+{
+  enum intr_level old_level = intr_disable (); 
+  t->priority = new_priority;
+  if (t->status == THREAD_READY)
+  {
+    list_remove (&t->elem);
+    list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
+  }
+  else if (t->status == THREAD_RUNNING && list_entry (list_begin (&ready_list), struct thread, elem)->priority > t->priority)
+  {
+    thread_yield ();
+  }
+  intr_set_level (old_level);
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -313,7 +345,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back (&ready_list, &t->elem);
+  /* Task2 modify: insert with order */
+  list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -384,7 +418,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    // list_push_back (&ready_list, &cur->elem);
+    /* Task2 modify: insert with order */
+    list_insert_ordered (&ready_list, &cur->elem, higher_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -538,10 +574,15 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->base_priority = priority;
   t->magic = THREAD_MAGIC;
+  list_init (&t->donators); // note the &!
+  t->lock_blocked_by = NULL;
 
   old_level = intr_disable ();
-  list_push_back (&all_list, &t->allelem);
+  // list_push_back (&all_list, &t->allelem);
+  /* Task2 modify: insert with order */
+  list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
   intr_set_level (old_level);
 }
 
