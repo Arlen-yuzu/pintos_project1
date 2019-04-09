@@ -97,6 +97,8 @@ struct thread
   struct lock *lock_blocked_by; /* the thread blocked by the lock */
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
+  int nice;              // the thread's current nice value
+  fixed_t recent_cpu;    // most recently calculated cpu value
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
@@ -143,7 +145,12 @@ void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
+void recalculate_priority_for_one_thread(struct thread *cur, void *aux UNUSED);
+void recalculate_priority();
+void calculate_load_avg_and_recent_cpu();
+
 void thread_sleep(int64_t ticks);
 void sleeping_list_handle(void);
 void thread_update_priority(struct thread *t, int new_priority, bool is_donated);
+
 #endif /* threads/thread.h */

@@ -107,7 +107,8 @@ static bool sema_higher_priority(const struct list_elem *a, const struct list_el
   const struct semaphore_elem *a_entry = list_entry(a, struct semaphore_elem, elem);
   const struct semaphore_elem *b_entry = list_entry(b, struct semaphore_elem, elem);
 
-  return (thread_higher_priority(list_front(&a_entry->semaphore.waiters), list_front(&b_entry->semaphore.waiters), NULL));
+  // return (thread_higher_priority(list_front(&a_entry->semaphore.waiters), list_front(&b_entry->semaphore.waiters), NULL));
+  return a_entry->priority >= b_entry->priority;
 }
 
 /* Down or "P" operation on a semaphore, but only if the
@@ -442,9 +443,9 @@ void cond_wait(struct condition *cond, struct lock *lock)
   ASSERT(lock_held_by_current_thread(lock));
 
   sema_init(&waiter.semaphore, 0);
-  list_push_back(&cond->waiters, &waiter.elem);
-  // waiter.priority = thread_current()->priority; //TODO
-  // list_insert_ordered(&cond->waiters, &waiter.elem, sema_higher_priority, NULL);
+  // list_push_back(&cond->waiters, &waiter.elem);
+  waiter.priority = thread_current()->priority; //TODO
+  list_insert_ordered(&cond->waiters, &waiter.elem, sema_higher_priority, NULL);
   lock_release(lock);
   // printf("release the lock\n");
   sema_down(&waiter.semaphore);
