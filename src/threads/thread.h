@@ -24,7 +24,6 @@ typedef int tid_t;
 #define PRI_MIN 0      /* Lowest priority. */
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
-#define LOCK_LEVEL 8   /* lock depth */
 #define FAKE_PRIORITY -1
 /* A kernel thread or user process.
 
@@ -97,8 +96,8 @@ struct thread
   struct lock *lock_blocked_by; /* the thread blocked by the lock */
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
-  int nice;              // the thread's current nice value
-  fixed_t recent_cpu;    // most recently calculated cpu value
+  int nice;              /* the thread's current nice value */
+  fixed_t recent_cpu;    /* most recently calculated cpu value */
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
@@ -146,8 +145,9 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 void recalculate_priority_for_one_thread(struct thread *cur, void *aux UNUSED);
-void recalculate_priority();
-void calculate_load_avg_and_recent_cpu();
+void recalculate_priority(void);
+void calculate_load_avg_and_recent_cpu(void);
+void increase_recent_cpu_by_one(void);
 
 void thread_sleep(int64_t ticks);
 void sleeping_list_handle(void);

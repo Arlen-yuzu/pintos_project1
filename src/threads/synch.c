@@ -90,6 +90,7 @@ static bool thread_higher_priority(const struct list_elem *a, const struct list_
   return a_entry->priority > b_entry->priority;
 }
 
+/* Compare two elements in the list based on lock priority */
 static bool lock_higher_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   ASSERT(a != NULL);
@@ -100,6 +101,7 @@ static bool lock_higher_priority(const struct list_elem *a, const struct list_el
   return a_entry->max_priority >= b_entry->max_priority;
 }
 
+/* Compare two elements in the list based on sema priority */
 static bool sema_higher_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   ASSERT(a != NULL);
@@ -107,7 +109,6 @@ static bool sema_higher_priority(const struct list_elem *a, const struct list_el
   const struct semaphore_elem *a_entry = list_entry(a, struct semaphore_elem, elem);
   const struct semaphore_elem *b_entry = list_entry(b, struct semaphore_elem, elem);
 
-  // return (thread_higher_priority(list_front(&a_entry->semaphore.waiters), list_front(&b_entry->semaphore.waiters), NULL));
   return a_entry->priority >= b_entry->priority;
 }
 
@@ -149,7 +150,7 @@ void sema_up(struct semaphore *sema)
   ASSERT(sema != NULL);
 
   old_level = intr_disable();
-  while (!list_empty(&sema->waiters)) //TODO 为什么这里需要while?? priority-donate-sema
+  while (!list_empty(&sema->waiters))
   {
     t = list_entry(list_pop_front(&sema->waiters), struct thread, elem);
     thread_unblock(t);
@@ -216,7 +217,7 @@ void lock_init(struct lock *lock)
   ASSERT(lock != NULL);
 
   lock->holder = NULL;
-  lock->max_priority = FAKE_PRIORITY; //TODO 这里也不知道为什么不能初始化 否则 priority-donate-multiple会有问题
+  lock->max_priority = FAKE_PRIORITY;
   sema_init(&lock->semaphore, 1);
 }
 
@@ -228,7 +229,7 @@ void lock_init(struct lock *lock)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-void lock_acquire(struct lock *lock) //TODO 很多细节未处理
+void lock_acquire(struct lock *lock)
 {
   ASSERT(lock != NULL);
   ASSERT(!intr_context());
@@ -238,58 +239,27 @@ void lock_acquire(struct lock *lock) //TODO 很多细节未处理
   struct thread *cur;
   struct thread *lock_holder;
   struct lock *tmp_lock;
-  int lock_level = 0;
 
   old_level = intr_disable();
   cur = thread_current();
   lock_holder = lock->holder;
   tmp_lock = lock;
 
-  // if (lock_holder != NULL)
-  //   cur->lock_blocked_by = lock;
-  // //无变化
-  // while (!thread_mlfqs && lock_holder && lock_holder->priority < cur->priority)
-  // {
-  //   cur->lock_blocked_by = tmp_lock;
-  //   thread_update_priority(lock_holder, cur->priority, true);
-  //   /* Priority_lock is the highest priority in its waiters list */
-  //   if (tmp_lock->max_priority < cur->priority)
-  //   {
-  //     tmp_lock->max_priority = cur->priority;
-  //   }
-  //   /* Nest donation: find the next lock that locks the current
-  //      * lock_holder
-  //      */
-  //   if (lock_holder->lock_blocked_by != NULL && lock_level < LOCK_LEVEL)
-  //   {
-  //     tmp_lock = lock_holder->lock_blocked_by;
-  //     lock_holder = lock_holder->lock_blocked_by->holder;
-  //     lock_level++;
-  //   }
-  //   else
-  //     break;
-  // }
-
-  //TODO not sure about the logic?
   if (!thread_mlfqs && lock_holder)
   {
     cur->lock_blocked_by = lock;
 
-    // while (lock_holder && tmp_lock->max_priority < cur->priority)
-    while (lock_holder && lock_holder->priority < cur->priority) //TODO 实在想不通为什么这里条件不能是 tmp_lock != null ？？
+    while (lock_holder && lock_holder->priority < cur->priority)
     {
       if (tmp_lock->max_priority < cur->priority)
       {
         tmp_lock->max_priority = cur->priority;
       }
-      // printf("before update %d\n", cur->priority);
-      thread_update_priority(lock_holder, cur->priority, true); //TODO
-      // printf("after update %d\n", cur->priority);
-      if (lock_holder->lock_blocked_by && lock_level < LOCK_LEVEL)
+      thread_update_priority(lock_holder, cur->priority, true);
+      if (lock_holder->lock_blocked_by)
       {
         tmp_lock = lock_holder->lock_blocked_by;
         lock_holder = tmp_lock->holder;
-        lock_level++;
       }
       else
         break;
@@ -303,24 +273,12 @@ void lock_acquire(struct lock *lock) //TODO 很多细节未处理
   {
     cur->lock_blocked_by = NULL;
     // list_push_back(&cur->donators, &lock->elem);
-    list_insert_ordered(&cur->donators, &lock->elem, lock_higher_priority, NULL); //TODO 这个是不是加在之前的循环更合适？？
+    list_insert_ordered(&cur->donators, &lock->elem, lock_higher_priority, NULL);
   }
 
   /* Enable interrupts */
   intr_set_level(old_level);
 }
-
-// void
-// donate_priority (struct thread *t)//TODO
-// {
-//   enum intr_level old_level = intr_disable ();
-//   if (t->status == THREAD_READY)
-//   {
-//     list_remove (&t->elem);
-//     list_insert_ordered (&ready_list, &t->elem, higher_priority, NULL);
-//   }
-//   intr_set_level (old_level);
-// }
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -370,13 +328,12 @@ void lock_release(struct lock *lock)
     if (!list_empty(&cur->donators))
     {
       lock_priority = list_entry(list_front(&cur->donators), struct lock, elem)->max_priority;
-      if (lock_priority != FAKE_PRIORITY && lock_priority > max_priority) //TODO
+      if (lock_priority != FAKE_PRIORITY && lock_priority > max_priority)
       {
         is_donated = true;
         max_priority = lock_priority;
       }
     }
-    // cur->priority = max_priority;
     thread_update_priority(cur, max_priority, is_donated);
   }
 
@@ -392,16 +349,6 @@ bool lock_held_by_current_thread(const struct lock *lock)
 
   return lock->holder == thread_current();
 }
-
-/* Put the structure into synch.h otherwise will lead error */
-// /* One semaphore in a list. */
-// struct semaphore_elem
-//   {
-//     struct list_elem elem;              /* List element. */
-//     struct semaphore semaphore;         /* This semaphore. */
-
-//     int priority;
-//   };
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -444,13 +391,11 @@ void cond_wait(struct condition *cond, struct lock *lock)
 
   sema_init(&waiter.semaphore, 0);
   // list_push_back(&cond->waiters, &waiter.elem);
-  waiter.priority = thread_current()->priority; //TODO
+  waiter.priority = thread_current()->priority;
   list_insert_ordered(&cond->waiters, &waiter.elem, sema_higher_priority, NULL);
   lock_release(lock);
-  // printf("release the lock\n");
   sema_down(&waiter.semaphore);
   lock_acquire(lock);
-  // printf("the lock is held by %s\n", lock->holder->name);
 }
 
 /* If any threads are waiting on COND (protected by LOCK), then
@@ -467,12 +412,9 @@ void cond_signal(struct condition *cond, struct lock *lock UNUSED)
   ASSERT(!intr_context());
   ASSERT(lock_held_by_current_thread(lock));
   if (!list_empty(&cond->waiters))
-  {
-    list_sort(&cond->waiters, sema_higher_priority, NULL);
     sema_up(&list_entry(list_pop_front(&cond->waiters),
                         struct semaphore_elem, elem)
                  ->semaphore);
-  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

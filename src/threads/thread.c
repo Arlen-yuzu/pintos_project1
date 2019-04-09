@@ -63,7 +63,7 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-fixed_t load_avg; // most recently calculated load average value
+fixed_t load_avg; /* most recently calculated load average value */
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -126,11 +126,11 @@ void thread_start(void)
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down(&idle_started);
 
-  load_avg = FP_CONST(0); //TODO
+  load_avg = FP_CONST(0);
 }
 
 /* Put current thread to sleep */
-void thread_sleep(int64_t ticks) //TODO
+void thread_sleep(int64_t ticks)
 {
   enum intr_level old_level;
   struct thread *cur = thread_current();
@@ -157,7 +157,7 @@ void thread_sleep(int64_t ticks) //TODO
 
 /* check sleeping_list from its head to see if any threads 
    can be unblocked and removed from the list */
-void sleeping_list_handle(void) //TODO
+void sleeping_list_handle(void)
 {
   struct list_elem *elem_cur;
   struct list_elem *elem_next;
@@ -212,7 +212,7 @@ static bool higher_priority(const struct list_elem *a,
 /* Update the priority of a thread, there are two cases:
    1. one thread's priority is changed (invoke thread_set_priority())
    2. priority donation */
-void thread_update_priority(struct thread *t, int new_priority, bool is_donated) //TODO
+void thread_update_priority(struct thread *t, int new_priority, bool is_donated)
 {
   enum intr_level old_level = intr_disable();
   if (is_donated)
@@ -321,11 +321,9 @@ tid_t thread_create(const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock(t);
-  // printf("current running thread before yield: %s\n", thread_name());
   /* Task 2: test_priority_change */
   if (t->priority > thread_current()->priority)
     thread_yield();
-  // printf("current running thread after yield: %s\n", thread_name());
   return tid;
 }
 
@@ -472,7 +470,7 @@ int thread_get_priority(void)
 void thread_set_nice(int nice UNUSED)
 {
   thread_current()->nice = nice;
-  recalculate_priority(); //TODO 这里就要重新计算吗
+  recalculate_priority();
   thread_yield();
 }
 
@@ -486,13 +484,13 @@ int thread_get_nice(void)
 /* Returns 100 times the system load average. */
 int thread_get_load_avg(void)
 {
-  return FP_ROUND(FP_MULT_MIX(load_avg, 100)); //TODO 为什么要round
+  return FP_ROUND(FP_MULT_MIX(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void)
 {
-  return FP_ROUND(FP_MULT_MIX(thread_current()->recent_cpu, 100)); //TODO 同上
+  return FP_ROUND(FP_MULT_MIX(thread_current()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -707,35 +705,29 @@ allocate_tid(void)
 }
 
 /* Calculate priority for all threads in all_list.
- * Recalculated once every fourth tick.
- */
-void recalculate_priority()
+   Recalculated once every fourth tick. */
+void recalculate_priority(void)
 {
   enum intr_level old_level = intr_disable();
   thread_foreach(recalculate_priority_for_one_thread, NULL);
-  // if (!list_empty(&ready_list))
-  // {
-  //   list_sort(&ready_list, higher_priority, NULL); //TODO 修改时排序？
-  // }
+  if (!list_empty(&ready_list))
+  {
+    list_sort(&ready_list, higher_priority, NULL);
+  }
   intr_set_level(old_level);
 }
 
-/* 𝑝𝑟𝑖𝑜𝑟𝑖𝑡𝑦 = 𝑃𝑅𝐼_𝑀𝐴𝑋 − (𝑟𝑒𝑐𝑒𝑛𝑡_𝑐𝑝𝑢/4) − (𝑛𝑖𝑐𝑒 × 2)
-*/
+/* update each thread's priority accoring to this formula
+    𝑝𝑟𝑖𝑜𝑟𝑖𝑡𝑦 = 𝑃𝑅𝐼_𝑀𝐴𝑋 − (𝑟𝑒𝑐𝑒𝑛𝑡_𝑐𝑝𝑢/4) − (𝑛𝑖𝑐𝑒 × 2) */
 void recalculate_priority_for_one_thread(struct thread *cur, void *aux UNUSED)
 {
   ASSERT(is_thread(cur));
   ASSERT(thread_mlfqs);
-  // ASSERT(cur != idle_thread);
   if (cur == idle_thread)
     return;
 
-  /* convert to integer nearest for (recent_cpu / 4) instead
-  * of the whole priority.
-  */
-  // printf("--before: %d--\n", cur->priority);
-  cur->priority = FP_ROUND(FP_SUB_MIX(FP_SUB(FP_CONST(PRI_MAX), FP_DIV_MIX(cur->recent_cpu, 4)), 2 * cur->nice)); //TODO 要不要变成round
-  // printf("--after: %d--\n\n", cur->priority);
+  cur->priority = FP_ROUND(FP_SUB_MIX(FP_SUB(FP_CONST(PRI_MAX), FP_DIV_MIX(cur->recent_cpu, 4)), 2 * cur->nice));
+
   /* Make sure it falls in the priority boundry */
   if (cur->priority < PRI_MIN)
   {
@@ -745,14 +737,10 @@ void recalculate_priority_for_one_thread(struct thread *cur, void *aux UNUSED)
   {
     cur->priority = PRI_MAX;
   }
-
-  // list_remove(cur);
-  // enum intr_level old_level = intr_disable();
-  // list_insert_ordered(&ready_list, &cur->elem, higher_priority, NULL);
-  // intr_set_level(old_level);
 }
 
-void increase_recent_cpu_by_one()
+/* float point calculation, increase recent cpu by 1 */
+void increase_recent_cpu_by_one(void)
 {
   ASSERT(thread_mlfqs);
   ASSERT(intr_context());
@@ -763,7 +751,10 @@ void increase_recent_cpu_by_one()
   }
 }
 
-void calculate_load_avg_and_recent_cpu() //TODO
+/* update cureent load_avf and recent_cpu according to
+  load_avg = (59/60) × load_avg + (1/60) × ready_threads 
+  and recent_cpu = (2*load_avg)/(2*load_avg+1)*recent_cpu+nice */
+void calculate_load_avg_and_recent_cpu(void)
 {
   ASSERT(thread_mlfqs);
   ASSERT(intr_context());
@@ -782,23 +773,13 @@ void calculate_load_avg_and_recent_cpu() //TODO
     t = list_entry(e, struct thread, allelem);
     if (t != idle_thread)
     {
-      /* load_avg and recent_cpu are fixed-point numbers */
       int load = FP_MULT_MIX(load_avg, 2);
       int coefficient = FP_DIV(load, FP_ADD_MIX(load, 1));
       t->recent_cpu = FP_ADD_MIX(FP_MULT(coefficient, t->recent_cpu), t->nice);
 
       recalculate_priority_for_one_thread(t, NULL);
-      // printf("current piroity: %d ", t->priority);
-      // printf("current cpu: %d\n", t->recent_cpu);
     }
   }
-  // struct list_elem *e;
-  // struct thread *t;
-  // for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
-  // {
-  //   t = list_entry(e, struct thread, allelem);
-  //   msg("--%s %d--", t->name, t->priority);
-  // }
 }
 
 /* Offset of `stack' member within `struct thread'.

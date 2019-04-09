@@ -8,7 +8,6 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/fixed_point.h"
-// #include <string.h>
 
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -86,7 +85,7 @@ timer_elapsed(int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-void timer_sleep(int64_t ticks) //TODO
+void timer_sleep(int64_t ticks)
 {
   // int64_t start = timer_ticks ();
 
@@ -167,18 +166,16 @@ timer_interrupt(struct intr_frame *args UNUSED)
   ticks++;
   enum intr_level old_level = intr_disable();
 
-  /* task 3 add */ //TODO
+  /* task 3 add */
   if (thread_mlfqs)
   {
     increase_recent_cpu_by_one();
     if (ticks % TIMER_FREQ == 0)
     {
-      // printf("thread %s: load avg \n", thread_current()->name);
       calculate_load_avg_and_recent_cpu();
     }
     if (ticks % 4 == 0)
     {
-      // printf("thread %s: priority \n", thread_current()->name);
       recalculate_priority();
     }
   }
